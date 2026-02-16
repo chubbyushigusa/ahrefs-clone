@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  plan          String    @default("free")
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  projects       Project[]
+  keywordSearches KeywordSearch[]
+  siteAudits     SiteAudit[]
+  domainAnalyses DomainAnalysis[]
+  heatmapSites   HeatmapSite[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  domain    String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackedKeywords TrackedKeyword[]
+  siteAudits      SiteAudit[]
+}
+
+model TrackedKeyword {
+  id        String   @id @default(cuid())
+  keyword   String
+  projectId String
+  createdAt DateTime @default(now())
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rankingHistory  RankingHistory[]
+}
+
+model RankingHistory {
+  id               String   @id @default(cuid())
+  trackedKeywordId String
+  position         Int?
+  url              String?
+  title            String?
+  checkedAt        DateTime @default(now())
+
+  trackedKeyword TrackedKeyword @relation(fields: [trackedKeywordId], references: [id], onDelete: Cascade)
+}
+
+model SiteAudit {
+  id          String   @id @default(cuid())
+  projectId   String?
+  userId      String
+  domain      String
+  status      String   @default("pending")
+  totalPages  Int      @default(0)
+  crawledPages Int     @default(0)
+  score       Int?
+  errors      Int      @default(0)
+  warnings    Int      @default(0)
+  notices     Int      @default(0)
+  resultJson  String?  @db.Text
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  pages   AuditPage[]
+}
+
+model AuditPage {
+  id          String   @id @default(cuid())
+  auditId     String
+  url         String
+  statusCode  Int?
+  title       String?
+  description String?
+  loadTime    Int?
+  issuesJson  String?  @db.Text
+  crawledAt   DateTime @default(now())
+
+  audit SiteAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+}
+
+model DomainAnalysis {
+  id         String   @id @default(cuid())
+  userId     String
+  domain     String
+  resultJson String   @db.Text
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KeywordSearch {
+  id         String   @id @default(cuid())
+  userId     String
+  keyword    String
+  resultJson String   @db.Text
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ApiCache {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─── Real Heatmap Tracking ───────────────────────────────────
+
+model HeatmapSite {
+  id        String   @id @default(cuid())
+  userId    String
+  domain    String   @unique
+  name      String?
+  siteKey   String   @unique @default(cuid())
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageviews  TrackingPageview[]
+}
+
+model TrackingPageview {
+  id         String   @id @default(cuid())
+  siteId     String
+  sessionId  String
+  url        String
+  path       String
+  title      String?
+  referrer   String?
+  userAgent  String?
+  screenW    Int?
+  screenH    Int?
+  pageHeight Int?
+  createdAt  DateTime @default(now())
+
+  site    HeatmapSite      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  scrolls TrackingScroll[]
+  clicks  TrackingClick[]
+
+  @@index([siteId, path])
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model TrackingScroll {
+  id         String   @id @default(cuid())
+  pageviewId String
+  maxDepth   Int
+  dwellMs    Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)
+
+  @@index([pageviewId])
+}
+
+model TrackingClick {
+  id         String   @id @default(cuid())
+  pageviewId String
+  x          Int
+  y          Int
+  selector   String?
+  text       String?
+  href       String?
+  createdAt  DateTime @default(now())
+
+  pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)
+
+  @@index([pageviewId])
+}
