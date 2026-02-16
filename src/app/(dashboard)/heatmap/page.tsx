@@ -472,21 +472,37 @@ function RealDataPanel() {
 
               {/* Real Heatmap Visualization */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "16px" }}>
-                {/* Main Canvas */}
-                <Card>
-                  <CardHeader className="py-3 px-4">
-                    <CardTitle className="text-sm">
-                      {dataMode === "scroll" ? "スクロール到達率ヒートマップ" : "クリックヒートマップ"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 pt-0">
-                    {dataMode === "scroll" ? (
-                      <RealScrollHeatmap data={heatmapData} />
-                    ) : (
-                      <RealClickHeatmap data={heatmapData} />
-                    )}
-                  </CardContent>
-                </Card>
+                {/* Main - Page with Overlay */}
+                <div style={{ backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                  {/* Browser chrome */}
+                  <div style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #e2e8f0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#ef4444" }} />
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#eab308" }} />
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#22c55e" }} />
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#94a3b8", marginLeft: "8px" }}>
+                        https://{selectedSite.domain}{selectedPath}
+                      </span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {dataMode === "scroll" ? "スクロール到達率" : "クリックヒートマップ"}
+                    </Badge>
+                  </div>
+
+                  {dataMode === "scroll" ? (
+                    <RealScrollHeatmap data={heatmapData} domain={selectedSite.domain} path={selectedPath} />
+                  ) : (
+                    <RealClickHeatmap data={heatmapData} domain={selectedSite.domain} path={selectedPath} />
+                  )}
+                </div>
 
                 {/* Right Sidebar */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -641,87 +657,135 @@ function RealDataPanel() {
   );
 }
 
-// ── Real Scroll Heatmap ───────────────────────────────────
-function RealScrollHeatmap({ data }: { data: RealHeatmapData }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerHeight = 500;
+// ── Real Scroll Heatmap (with actual page iframe) ─────────
+function RealScrollHeatmap({ data, domain, path }: { data: RealHeatmapData; domain: string; path: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(3000);
+  const pageUrl = `https://${domain}${path}`;
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-
-    // Draw scroll depth as horizontal bands
-    const milestones = data.scrollDepth;
-    for (let i = 0; i < milestones.length - 1; i++) {
-      const current = milestones[i];
-      const next = milestones[i + 1];
-      const y1 = (current.depth / 100) * h;
-      const y2 = (next.depth / 100) * h;
-
-      const reach = current.reach;
-      ctx.fillStyle = getScrollColor(reach);
-      ctx.fillRect(0, y1, w, y2 - y1);
-
-      // Reach label
-      ctx.fillStyle = "rgba(0,0,0,0.7)";
-      const labelW = 52;
-      const labelH = 20;
-      ctx.fillRect(w - labelW - 8, y1 + 4, labelW, labelH);
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 11px sans-serif";
-      ctx.textAlign = "right";
-      ctx.fillText(`${reach}%`, w - 14, y1 + 17);
-
-      // Horizontal line
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
-      ctx.beginPath();
-      ctx.moveTo(0, y2);
-      ctx.lineTo(w, y2);
-      ctx.stroke();
-
-      // Depth label (left)
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.textAlign = "left";
-      ctx.font = "10px sans-serif";
-      ctx.fillText(`${next.depth}%`, 8, y2 - 4);
+    if (data.avgPageHeight && data.avgPageHeight > 0) {
+      setIframeHeight(data.avgPageHeight);
     }
+  }, [data.avgPageHeight]);
 
-    // Fold line
-    const foldY = h * 0.15; // approximate first view
-    ctx.strokeStyle = "#ef4444";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, foldY);
-    ctx.lineTo(w, foldY);
-    ctx.stroke();
-
-    ctx.fillStyle = "#ef4444";
-    ctx.fillRect(8, foldY - 8, 80, 16);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 10px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText("ファーストビュー", 14, foldY + 3);
-
-  }, [data]);
+  // Try to detect iframe height after load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const doc = iframeRef.current?.contentDocument;
+        if (doc?.body) {
+          const h = doc.body.scrollHeight;
+          if (h > 100) setIframeHeight(h);
+        }
+      } catch { /* cross-origin */ }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [pageUrl]);
 
   return (
-    <div style={{ position: "relative" }}>
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={containerHeight}
-        style={{ width: "100%", height: `${containerHeight}px`, borderRadius: "6px", border: "1px solid #e2e8f0" }}
-      />
+    <>
+      <div style={{ position: "relative", height: "700px", overflow: "auto" }}>
+        {/* Actual page iframe */}
+        <iframe
+          ref={iframeRef}
+          src={pageUrl}
+          style={{
+            width: "100%",
+            height: `${iframeHeight}px`,
+            border: "none",
+            display: "block",
+            pointerEvents: "none",
+          }}
+          sandbox="allow-same-origin allow-scripts"
+          title="Page Preview"
+        />
+
+        {/* Scroll heatmap overlay */}
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: `${iframeHeight}px`,
+          pointerEvents: "none",
+        }}>
+          {data.scrollDepth.map((sd, i) => {
+            const next = data.scrollDepth[i + 1];
+            if (!next) return null;
+            const top = (sd.depth / 100) * iframeHeight;
+            const height = ((next.depth - sd.depth) / 100) * iframeHeight;
+            return (
+              <div key={sd.depth} style={{
+                position: "absolute",
+                top: `${top}px`,
+                left: 0,
+                right: 0,
+                height: `${height}px`,
+                backgroundColor: getScrollColor(sd.reach),
+                transition: "background-color 0.3s",
+              }}>
+                <div style={{
+                  position: "absolute",
+                  right: "8px",
+                  top: "4px",
+                  backgroundColor: "rgba(0,0,0,0.7)",
+                  color: "#fff",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                }}>
+                  {sd.reach}%
+                </div>
+                <div style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: "1px",
+                  backgroundColor: "rgba(255,255,255,0.5)",
+                }} />
+              </div>
+            );
+          })}
+
+          {/* Fold line */}
+          <div style={{
+            position: "absolute",
+            top: `${Math.min(900, iframeHeight * 0.12)}px`,
+            left: 0,
+            right: 0,
+            height: "2px",
+            backgroundColor: "#ef4444",
+            zIndex: 10,
+          }}>
+            <span style={{
+              position: "absolute",
+              left: "8px",
+              top: "-10px",
+              backgroundColor: "#ef4444",
+              color: "#fff",
+              padding: "1px 8px",
+              borderRadius: "3px",
+              fontSize: "10px",
+              fontWeight: 700,
+            }}>
+              ファーストビュー
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Legend */}
       <div style={{
-        display: "flex", alignItems: "center", gap: "8px", marginTop: "8px",
-        fontSize: "11px", color: "#64748b",
+        padding: "8px 16px",
+        borderTop: "1px solid #e2e8f0",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        fontSize: "11px",
+        color: "#64748b",
       }}>
         <span>低い</span>
         <div style={{ display: "flex", height: "10px", flex: 1, borderRadius: "5px", overflow: "hidden" }}>
@@ -733,72 +797,117 @@ function RealScrollHeatmap({ data }: { data: RealHeatmapData }) {
         </div>
         <span>高い (到達率)</span>
       </div>
-    </div>
+    </>
   );
 }
 
-// ── Real Click Heatmap ────────────────────────────────────
-function RealClickHeatmap({ data }: { data: RealHeatmapData }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerHeight = 500;
+// ── Real Click Heatmap (with actual page iframe) ──────────
+function RealClickHeatmap({ data, domain, path }: { data: RealHeatmapData; domain: string; path: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(3000);
+  const pageUrl = `https://${domain}${path}`;
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-
-    // Background
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(0, 0, w, h);
-
-    if (data.clickMap.length === 0) {
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("クリックデータがありません", w / 2, h / 2);
-      return;
+    if (data.avgPageHeight && data.avgPageHeight > 0) {
+      setIframeHeight(data.avgPageHeight);
     }
+  }, [data.avgPageHeight]);
 
-    const maxCount = Math.max(...data.clickMap.map((c) => c.count));
-    const pageH = data.avgPageHeight || 2000;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const doc = iframeRef.current?.contentDocument;
+        if (doc?.body) {
+          const h = doc.body.scrollHeight;
+          if (h > 100) setIframeHeight(h);
+        }
+      } catch { /* cross-origin */ }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [pageUrl]);
 
-    // Draw click dots
-    for (const click of data.clickMap) {
-      const intensity = click.count / maxCount;
-      const relX = Math.min(click.x / 1400, 1) * w; // normalize to canvas width
-      const relY = Math.min(click.y / pageH, 1) * h;
-      const radius = 10 + intensity * 30;
-      const alpha = 0.2 + intensity * 0.6;
-
-      const gradient = ctx.createRadialGradient(relX, relY, 0, relX, relY, radius);
-      gradient.addColorStop(0, `rgba(249, 115, 22, ${alpha})`);
-      gradient.addColorStop(0.5, `rgba(239, 68, 68, ${alpha * 0.6})`);
-      gradient.addColorStop(1, "transparent");
-
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(relX, relY, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }, [data]);
+  const maxCount = data.clickMap.length > 0 ? Math.max(...data.clickMap.map((c) => c.count)) : 1;
+  const pageH = data.avgPageHeight || iframeHeight;
 
   return (
-    <div style={{ position: "relative" }}>
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={containerHeight}
-        style={{ width: "100%", height: `${containerHeight}px`, borderRadius: "6px", border: "1px solid #e2e8f0" }}
-      />
+    <>
+      <div style={{ position: "relative", height: "700px", overflow: "auto" }}>
+        {/* Actual page iframe */}
+        <iframe
+          ref={iframeRef}
+          src={pageUrl}
+          style={{
+            width: "100%",
+            height: `${iframeHeight}px`,
+            border: "none",
+            display: "block",
+            pointerEvents: "none",
+          }}
+          sandbox="allow-same-origin allow-scripts"
+          title="Page Preview"
+        />
+
+        {/* Click overlay */}
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: `${iframeHeight}px`,
+          pointerEvents: "none",
+        }}>
+          {data.clickMap.length === 0 && (
+            <div style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              backgroundColor: "rgba(0,0,0,0.6)",
+              color: "#fff",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              fontSize: "13px",
+            }}>
+              クリックデータがありません
+            </div>
+          )}
+          {data.clickMap.map((click, i) => {
+            const intensity = click.count / maxCount;
+            // Map click coordinates relative to iframe
+            const relX = (click.x / 1400) * 100; // percentage
+            const relY = click.y / pageH * iframeHeight;
+            const size = 30 + intensity * 50;
+            const alpha = 0.25 + intensity * 0.55;
+            return (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  top: `${relY}px`,
+                  left: `${relX}%`,
+                  width: `${size}px`,
+                  height: `${size}px`,
+                  borderRadius: "50%",
+                  background: `radial-gradient(circle, rgba(249,115,22,${alpha}) 0%, rgba(239,68,68,${alpha * 0.6}) 50%, transparent 70%)`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: Math.round(intensity * 100),
+                }}
+                title={`${click.topSelector || `(${click.x},${click.y})`} - ${click.count}回`}
+              />
+            );
+          })}
+        </div>
+      </div>
+
       {/* Legend */}
       <div style={{
-        display: "flex", alignItems: "center", gap: "12px", marginTop: "8px",
-        fontSize: "11px", color: "#64748b",
+        padding: "8px 16px",
+        borderTop: "1px solid #e2e8f0",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        fontSize: "11px",
+        color: "#64748b",
       }}>
         <span>クリック頻度:</span>
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -810,7 +919,7 @@ function RealClickHeatmap({ data }: { data: RealHeatmapData }) {
           <span>低い</span>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
