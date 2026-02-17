@@ -1,4 +1,4 @@
-// Analyzer Heatmap Tracker v1.0
+// Analyzer Heatmap Tracker v1.1
 // Usage: <script src="https://analyzer.chubby.co.jp/t.js" data-site="YOUR_SITE_KEY"></script>
 (function () {
   "use strict";
@@ -22,6 +22,10 @@
   var startTime = Date.now();
   var clickBuf = [];
   var flushTimer = null;
+
+  // --- Attention Zone Tracking ---
+  // 10 zones (0-10%, 10-20%, ..., 90-100%) — cumulative dwell seconds
+  var zones = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   function send(path, data) {
     var payload = JSON.stringify(data);
@@ -73,10 +77,34 @@
     if (depth > maxScroll) maxScroll = depth;
   }
 
+  // --- Zone Sampling (every 2 seconds) ---
+  function sampleZones() {
+    var scrollTop =
+      window.pageYOffset || document.documentElement.scrollTop || 0;
+    var viewH = window.innerHeight || document.documentElement.clientHeight;
+    var docH = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight
+    );
+    if (docH <= 0) return;
+
+    var viewTop = scrollTop / docH;        // 0..1
+    var viewBottom = (scrollTop + viewH) / docH; // 0..1
+
+    for (var i = 0; i < 10; i++) {
+      var zoneTop = i * 0.1;
+      var zoneBottom = (i + 1) * 0.1;
+      // Check if this zone overlaps with viewport
+      if (viewBottom > zoneTop && viewTop < zoneBottom) {
+        zones[i] += 2; // 2 seconds per sample
+      }
+    }
+  }
+
   function flushScroll() {
     if (!pvId || maxScroll === 0) return;
     var dwell = Date.now() - startTime;
-    send("/scroll", { pvId: pvId, d: maxScroll, dw: dwell });
+    send("/scroll", { pvId: pvId, d: maxScroll, dw: dwell, zones: zones });
   }
 
   // --- Clicks ---
@@ -123,6 +151,9 @@
   trackPageview();
   window.addEventListener("scroll", onScroll, { passive: true });
   document.addEventListener("click", onClick, true);
+
+  // Zone sampling every 2 seconds
+  setInterval(sampleZones, 2000);
 
   // Send data when leaving
   window.addEventListener("beforeunload", function () {

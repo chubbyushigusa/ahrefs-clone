@@ -204,6 +204,7 @@ model TrackingScroll {
   pageviewId String
   maxDepth   Int
   dwellMs    Int      @default(0)
+  zones      String?  // JSON: [sec0, sec1, ..., sec9] 各10%区間の滞在秒数
   createdAt  DateTime @default(now())
 
   pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)

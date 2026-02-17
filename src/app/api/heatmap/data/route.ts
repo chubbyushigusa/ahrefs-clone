@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const siteId = req.nextUrl.searchParams.get("siteId");
     const path = req.nextUrl.searchParams.get("path") || "/";
     const days = parseInt(req.nextUrl.searchParams.get("days") || "30");
+    const device = req.nextUrl.searchParams.get("device") || "all"; // all | pc | sp
 
     if (!siteId) {
       return NextResponse.json({ error: "siteIdが必要です" }, { status: 400 });
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     // Get pageviews for this path
-    const pageviews = await prisma.trackingPageview.findMany({
+    let pageviews = await prisma.trackingPageview.findMany({
       where: {
         siteId,
         path,
@@ -42,12 +43,23 @@ export async function GET(req: NextRequest) {
       take: 5000,
     });
 
+    // Device filter
+    if (device === "pc") {
+      pageviews = pageviews.filter((pv) => (pv.screenW || 0) >= 768);
+    } else if (device === "sp") {
+      pageviews = pageviews.filter((pv) => (pv.screenW || 0) < 768);
+    }
+
     const totalPV = pageviews.length;
     if (totalPV === 0) {
       return NextResponse.json({
         totalPV: 0,
         uniqueSessions: 0,
         avgDwell: 0,
+        medianDwell: 0,
+        fvExitRate: 0,
+        bottomReachRate: 0,
+        attentionZones: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         scrollDepth: [],
         clickMap: [],
         pages: [],
@@ -57,20 +69,63 @@ export async function GET(req: NextRequest) {
     // Unique sessions
     const uniqueSessions = new Set(pageviews.map((pv) => pv.sessionId)).size;
 
-    // Scroll depth distribution
+    // Scroll depth distribution + dwell times
     const scrollData: number[] = [];
-    let totalDwell = 0;
-    let dwellCount = 0;
+    const dwellValues: number[] = [];
+    const allZones: number[][] = [];
+
     for (const pv of pageviews) {
       for (const s of pv.scrolls) {
         scrollData.push(s.maxDepth);
         if (s.dwellMs > 0) {
-          totalDwell += s.dwellMs;
-          dwellCount++;
+          dwellValues.push(s.dwellMs);
+        }
+        // Parse zones data
+        if (s.zones) {
+          try {
+            const z = JSON.parse(s.zones) as number[];
+            if (Array.isArray(z) && z.length === 10) {
+              allZones.push(z);
+            }
+          } catch { /* ignore */ }
         }
       }
     }
-    const avgDwell = dwellCount > 0 ? Math.round(totalDwell / dwellCount) : 0;
+
+    const totalDwell = dwellValues.reduce((a, b) => a + b, 0);
+    const avgDwell = dwellValues.length > 0 ? Math.round(totalDwell / dwellValues.length) : 0;
+
+    // Median dwell
+    const sortedDwell = [...dwellValues].sort((a, b) => a - b);
+    const medianDwell = sortedDwell.length > 0
+      ? sortedDwell[Math.floor(sortedDwell.length / 2)]
+      : 0;
+
+    // FV exit rate: maxDepth <= 15%
+    const fvExitCount = scrollData.filter((d) => d <= 15).length;
+    const fvExitRate = scrollData.length > 0 ? Math.round((fvExitCount / scrollData.length) * 100) : 0;
+
+    // Bottom reach rate: maxDepth >= 90%
+    const bottomCount = scrollData.filter((d) => d >= 90).length;
+    const bottomReachRate = scrollData.length > 0 ? Math.round((bottomCount / scrollData.length) * 100) : 0;
+
+    // Attention zones: average dwell per zone, normalized to 0-100
+    let attentionZones = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    if (allZones.length > 0) {
+      const avgZones = Array(10).fill(0).map((_, i) => {
+        const sum = allZones.reduce((acc, z) => acc + z[i], 0);
+        return sum / allZones.length;
+      });
+      const maxZone = Math.max(...avgZones, 1);
+      attentionZones = avgZones.map((v) => Math.round((v / maxZone) * 100));
+    } else if (scrollData.length > 0) {
+      // Fallback: estimate from scroll reach
+      const milestonePoints = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95];
+      attentionZones = milestonePoints.map((depth) => {
+        const reached = scrollData.filter((d) => d >= depth).length;
+        return scrollData.length > 0 ? Math.round((reached / scrollData.length) * 100) : 0;
+      });
+    }
 
     // Scroll depth milestones (what % of visitors reach each depth)
     const milestones = [0, 10, 25, 50, 75, 90, 100];
@@ -130,6 +185,10 @@ export async function GET(req: NextRequest) {
       totalPV,
       uniqueSessions,
       avgDwell,
+      medianDwell,
+      fvExitRate,
+      bottomReachRate,
+      attentionZones,
       avgPageHeight: Math.round(avgPageHeight),
       scrollDepth,
       clickMap,
