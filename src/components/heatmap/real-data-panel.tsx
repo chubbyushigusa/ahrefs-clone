@@ -70,6 +70,7 @@ export function RealDataPanel() {
   const [deviceFilter, setDeviceFilter] = useState<DeviceFilter>("all");
   const [showPaths, setShowPaths] = useState(false);
   const [pageHtml, setPageHtml] = useState<string | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   const fetchSites = useCallback(async () => {
     try {
@@ -129,6 +130,7 @@ export function RealDataPanel() {
   const fetchData = useCallback(async () => {
     if (!selectedSite) return;
     setLoadingData(true);
+    setDataError(null);
     try {
       const proxyUrl = `/api/heatmap/proxy?url=${encodeURIComponent(`https://${selectedSite.domain}${selectedPath}`)}`;
       const [dataRes, proxyRes] = await Promise.all([
@@ -136,7 +138,11 @@ export function RealDataPanel() {
         fetch(proxyUrl).catch(() => null),
       ]);
       const data = await dataRes.json();
-      if (dataRes.ok) setHeatmapData(data);
+      if (dataRes.ok) {
+        setHeatmapData(data);
+      } else {
+        setDataError(data.error || "データの取得に失敗しました");
+      }
 
       if (proxyRes?.ok) {
         const proxyData = await proxyRes.json();
@@ -144,7 +150,9 @@ export function RealDataPanel() {
       } else {
         setPageHtml(null);
       }
-    } catch { /* ignore */ } finally {
+    } catch {
+      setDataError("データの取得に失敗しました。再読み込みしてください。");
+    } finally {
       setLoadingData(false);
     }
   }, [selectedSite, selectedPath, deviceFilter]);
@@ -599,6 +607,21 @@ export function RealDataPanel() {
                 <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>
                   <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#f97316" }} />
                 </div>
+              )}
+
+              {dataError && !loadingData && (
+                <Card>
+                  <CardContent className="pt-6 pb-6">
+                    <div style={{ textAlign: "center", padding: "40px 0" }}>
+                      <BarChart3 style={{ width: "48px", height: "48px", color: "#ef4444", margin: "0 auto" }} />
+                      <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#0f172a", marginTop: "16px" }}>データ取得エラー</h3>
+                      <p style={{ fontSize: "13px", color: "#94a3b8", marginTop: "8px" }}>{dataError}</p>
+                      <Button variant="outline" onClick={fetchData} style={{ marginTop: "16px" }}>
+                        再読み込み
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </>
           )}
