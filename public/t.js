@@ -1,4 +1,4 @@
-// Analyzer Heatmap Tracker v1.1
+// Analyzer Heatmap Tracker v2.0
 // Usage: <script src="https://analyzer.chubby.co.jp/t.js" data-site="YOUR_SITE_KEY"></script>
 (function () {
   "use strict";
@@ -24,8 +24,24 @@
   var flushTimer = null;
 
   // --- Attention Zone Tracking ---
-  // 10 zones (0-10%, 10-20%, ..., 90-100%) — cumulative dwell seconds
   var zones = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  // --- Mouse Move Recording ---
+  var mouseBuf = [];
+  var mouseStartTime = Date.now();
+
+  // --- Rage/Dead Click Detection ---
+  var clickHistory = []; // [{el, time}]
+
+  // --- UTM Params ---
+  function getUtm() {
+    var params = new URLSearchParams(location.search);
+    return {
+      us: params.get("utm_source") || "",
+      um: params.get("utm_medium") || "",
+      uc: params.get("utm_campaign") || "",
+    };
+  }
 
   function send(path, data) {
     var payload = JSON.stringify(data);
@@ -41,6 +57,7 @@
 
   // --- Pageview ---
   function trackPageview() {
+    var utm = getUtm();
     var data = {
       sk: siteKey,
       sid: sid,
@@ -50,16 +67,18 @@
       ref: document.referrer,
       sw: screen.width,
       sh: screen.height,
+      us: utm.us,
+      um: utm.um,
+      uc: utm.uc,
     };
     var xhr = new XMLHttpRequest();
-    xhr.open("POST", API + "/pv", false); // sync to get pvId before user leaves
+    xhr.open("POST", API + "/pv", false);
     xhr.setRequestHeader("Content-Type", "application/json");
     try {
       xhr.send(JSON.stringify(data));
       var res = JSON.parse(xhr.responseText);
       pvId = res.id;
     } catch (e) {
-      // fallback: async
       send("/pv", data);
     }
   }
@@ -87,16 +106,13 @@
       document.documentElement.scrollHeight
     );
     if (docH <= 0) return;
-
-    var viewTop = scrollTop / docH;        // 0..1
-    var viewBottom = (scrollTop + viewH) / docH; // 0..1
-
+    var viewTop = scrollTop / docH;
+    var viewBottom = (scrollTop + viewH) / docH;
     for (var i = 0; i < 10; i++) {
       var zoneTop = i * 0.1;
       var zoneBottom = (i + 1) * 0.1;
-      // Check if this zone overlaps with viewport
       if (viewBottom > zoneTop && viewTop < zoneBottom) {
-        zones[i] += 2; // 2 seconds per sample
+        zones[i] += 2;
       }
     }
   }
@@ -107,19 +123,49 @@
     send("/scroll", { pvId: pvId, d: maxScroll, dw: dwell, zones: zones });
   }
 
-  // --- Clicks ---
+  // --- Mouse Move Recording (throttled to ~100ms) ---
+  var lastMouseTime = 0;
+  function onMouseMove(e) {
+    var now = Date.now();
+    if (now - lastMouseTime < 100) return;
+    lastMouseTime = now;
+    if (mouseBuf.length >= 500) return; // cap at 500 moves
+    mouseBuf.push({
+      t: now - mouseStartTime,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }
+
+  function flushMouse() {
+    if (!pvId || mouseBuf.length === 0) return;
+    send("/mouse", { pvId: pvId, moves: mouseBuf });
+    mouseBuf = [];
+  }
+
+  // --- Click Detection (rage + dead) ---
+  function isInteractive(el) {
+    var tag = el.tagName.toLowerCase();
+    if (tag === "a" || tag === "button" || tag === "input" || tag === "select" || tag === "textarea") return true;
+    if (el.getAttribute("role") === "button" || el.getAttribute("tabindex")) return true;
+    if (el.onclick || el.getAttribute("onclick")) return true;
+    var cur = el;
+    while (cur && cur !== document.body) {
+      if (cur.tagName.toLowerCase() === "a" || cur.tagName.toLowerCase() === "button") return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
   function onClick(e) {
     if (!pvId) return;
     var t = e.target;
     var rect = t.getBoundingClientRect();
-    var scrollY =
-      window.pageYOffset || document.documentElement.scrollTop || 0;
-    var scrollX =
-      window.pageXOffset || document.documentElement.scrollLeft || 0;
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0;
     var x = Math.round(rect.left + rect.width / 2 + scrollX);
     var y = Math.round(rect.top + rect.height / 2 + scrollY);
 
-    // Build CSS selector (simplified)
     var sel = t.tagName.toLowerCase();
     if (t.id) sel += "#" + t.id;
     else if (t.className && typeof t.className === "string")
@@ -128,6 +174,17 @@
     var text = (t.textContent || "").trim().slice(0, 50);
     var href = t.closest("a") ? t.closest("a").href : null;
 
+    // Rage click detection: 3+ clicks on same selector within 1.5s
+    var now = Date.now();
+    clickHistory.push({ sel: sel, time: now });
+    // Keep only last 2 seconds of history
+    clickHistory = clickHistory.filter(function (c) { return now - c.time < 2000; });
+    var sameCount = clickHistory.filter(function (c) { return c.sel === sel; }).length;
+    var isRage = sameCount >= 3;
+
+    // Dead click detection
+    var isDead = !isInteractive(t) && !href;
+
     clickBuf.push({
       pvId: pvId,
       x: x,
@@ -135,6 +192,8 @@
       sel: sel,
       text: text,
       href: href,
+      isRage: isRage,
+      isDead: isDead,
     });
 
     if (flushTimer) clearTimeout(flushTimer);
@@ -151,6 +210,7 @@
   trackPageview();
   window.addEventListener("scroll", onScroll, { passive: true });
   document.addEventListener("click", onClick, true);
+  document.addEventListener("mousemove", onMouseMove, { passive: true });
 
   // Zone sampling every 2 seconds
   setInterval(sampleZones, 2000);
@@ -159,12 +219,14 @@
   window.addEventListener("beforeunload", function () {
     flushScroll();
     flushClicks();
+    flushMouse();
   });
 
-  // Also send periodically (every 30s)
+  // Periodic flush (every 30s)
   setInterval(function () {
     flushScroll();
     flushClicks();
+    flushMouse();
   }, 30000);
 
   // Measure page height after load

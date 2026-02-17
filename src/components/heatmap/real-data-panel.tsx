@@ -9,6 +9,7 @@ import {
   Loader2, Plus, Copy, Check, Trash2, Globe, BarChart3,
   Eye, Clock, MousePointerClick, Code, ChevronDown,
   List, LineChart, Monitor, Smartphone, ArrowDown, Flame,
+  Play, Zap, Filter, Radio, Brain, GitCompare,
 } from "lucide-react";
 import { RealScrollHeatmap } from "./real-scroll-heatmap";
 import { RealClickHeatmap } from "./real-click-heatmap";
@@ -16,6 +17,14 @@ import { RealAttentionHeatmap } from "./real-attention-heatmap";
 import { SessionList } from "./session-list";
 import { ClickLog } from "./click-log";
 import { AnalyticsOverview } from "./analytics-overview";
+import { SessionReplay } from "./session-replay";
+import { RageClickView } from "./rage-click-view";
+import { RealtimeDashboard } from "./realtime-dashboard";
+import { UtmAnalysis } from "./utm-analysis";
+import { FunnelAnalysis } from "./funnel-analysis";
+import { AiReport } from "./ai-report";
+import { PageComparison } from "./page-comparison";
+import { PdfExport } from "./pdf-export";
 
 interface HeatmapSite {
   id: string;
@@ -48,7 +57,7 @@ function formatDwell(ms: number): string {
   return `${Math.floor(sec / 60)}分${sec % 60}秒`;
 }
 
-type SubTab = "heatmap" | "sessions" | "clicks" | "analytics";
+type SubTab = "heatmap" | "sessions" | "replay" | "clicks" | "rage" | "funnel" | "utm" | "realtime" | "ai" | "analytics";
 type HeatmapMode = "attention" | "scroll" | "click";
 type DeviceFilter = "all" | "pc" | "sp";
 
@@ -276,10 +285,16 @@ export function RealDataPanel() {
           </Card>
 
           {/* Sub-Tab Selector */}
-          <div style={{ display: "flex", gap: "4px", backgroundColor: "#f1f5f9", padding: "4px", borderRadius: "10px", width: "fit-content" }}>
+          <div style={{ display: "flex", gap: "4px", backgroundColor: "#f1f5f9", padding: "4px", borderRadius: "10px", flexWrap: "wrap" }}>
             {([
               { key: "heatmap" as SubTab, label: "ヒートマップ", icon: BarChart3 },
-              { key: "sessions" as SubTab, label: "セッション一覧", icon: List },
+              { key: "sessions" as SubTab, label: "セッション", icon: List },
+              { key: "replay" as SubTab, label: "リプレイ", icon: Play },
+              { key: "rage" as SubTab, label: "レイジクリック", icon: Zap },
+              { key: "funnel" as SubTab, label: "ファネル", icon: Filter },
+              { key: "utm" as SubTab, label: "UTM分析", icon: GitCompare },
+              { key: "realtime" as SubTab, label: "リアルタイム", icon: Radio },
+              { key: "ai" as SubTab, label: "AIレポート", icon: Brain },
               { key: "clicks" as SubTab, label: "クリックログ", icon: MousePointerClick },
               { key: "analytics" as SubTab, label: "アクセス解析", icon: LineChart },
             ]).map((t) => (
@@ -288,15 +303,15 @@ export function RealDataPanel() {
                 onClick={() => setSubTab(t.key)}
                 style={{
                   display: "flex", alignItems: "center", gap: "6px",
-                  padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer",
-                  fontSize: "13px", fontWeight: subTab === t.key ? 600 : 400,
+                  padding: "8px 14px", borderRadius: "8px", border: "none", cursor: "pointer",
+                  fontSize: "12px", fontWeight: subTab === t.key ? 600 : 400,
                   backgroundColor: subTab === t.key ? "#fff" : "transparent",
                   color: subTab === t.key ? "#0f172a" : "#64748b",
                   boxShadow: subTab === t.key ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
                   transition: "all 0.2s",
                 }}
               >
-                <t.icon style={{ width: "15px", height: "15px" }} />
+                <t.icon style={{ width: "14px", height: "14px" }} />
                 {t.label}
               </button>
             ))}
@@ -431,6 +446,11 @@ export function RealDataPanel() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* PDF Export + Page Comparison */}
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                    <PdfExport data={heatmapData} domain={selectedSite.domain} path={selectedPath} />
+                  </div>
 
                   {/* Heatmap Visualization + Sidebar */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "16px" }}>
@@ -589,6 +609,11 @@ export function RealDataPanel() {
                 </>
               )}
 
+              {/* Page Comparison */}
+              {heatmapData && heatmapData.totalPV > 0 && (
+                <PageComparison siteId={selectedSite.id} pages={heatmapData.pages} />
+              )}
+
               {heatmapData && heatmapData.totalPV === 0 && !loadingData && (
                 <Card>
                   <CardContent className="pt-6 pb-6">
@@ -627,6 +652,12 @@ export function RealDataPanel() {
           )}
 
           {subTab === "sessions" && <SessionList siteId={selectedSite.id} />}
+          {subTab === "replay" && <SessionReplay siteId={selectedSite.id} />}
+          {subTab === "rage" && <RageClickView siteId={selectedSite.id} />}
+          {subTab === "funnel" && <FunnelAnalysis siteId={selectedSite.id} />}
+          {subTab === "utm" && <UtmAnalysis siteId={selectedSite.id} />}
+          {subTab === "realtime" && <RealtimeDashboard siteId={selectedSite.id} />}
+          {subTab === "ai" && <AiReport siteId={selectedSite.id} />}
           {subTab === "clicks" && <ClickLog siteId={selectedSite.id} />}
           {subTab === "analytics" && <AnalyticsOverview siteId={selectedSite.id} />}
         </>

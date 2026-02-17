@@ -174,6 +174,7 @@ model HeatmapSite {
 
   user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   pageviews  TrackingPageview[]
+  funnels    HeatmapFunnel[]
 }
 
 model TrackingPageview {
@@ -188,11 +189,15 @@ model TrackingPageview {
   screenW    Int?
   screenH    Int?
   pageHeight Int?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
   createdAt  DateTime @default(now())
 
-  site    HeatmapSite      @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  scrolls TrackingScroll[]
-  clicks  TrackingClick[]
+  site       HeatmapSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  scrolls    TrackingScroll[]
+  clicks     TrackingClick[]
+  mouseMoves TrackingMouseMove[]
 
   @@index([siteId, path])
   @@index([sessionId])
@@ -204,7 +209,7 @@ model TrackingScroll {
   pageviewId String
   maxDepth   Int
   dwellMs    Int      @default(0)
-  zones      String?  // JSON: [sec0, sec1, ..., sec9] 各10%区間の滞在秒数
+  zones      String?
   createdAt  DateTime @default(now())
 
   pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)
@@ -220,9 +225,33 @@ model TrackingClick {
   selector   String?
   text       String?
   href       String?
+  isRage     Boolean  @default(false)
+  isDead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)
 
   @@index([pageviewId])
+}
+
+model TrackingMouseMove {
+  id         String   @id @default(cuid())
+  pageviewId String
+  moves      String   @db.Text // JSON: [{t,x,y}, ...]
+  createdAt  DateTime @default(now())
+
+  pageview TrackingPageview @relation(fields: [pageviewId], references: [id], onDelete: Cascade)
+
+  @@index([pageviewId])
+}
+
+model HeatmapFunnel {
+  id        String   @id @default(cuid())
+  siteId    String
+  name      String
+  steps     String   // JSON: [{path, label}]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site HeatmapSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
 }

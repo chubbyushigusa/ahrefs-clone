@@ -20,6 +20,8 @@ interface ClickPayload {
   sel?: string;
   text?: string;
   href?: string;
+  isRage?: boolean;
+  isDead?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,6 +40,8 @@ export async function POST(req: NextRequest) {
       selector: c.sel ? String(c.sel).slice(0, 200) : null,
       text: c.text ? String(c.text).slice(0, 100) : null,
       href: c.href ? String(c.href).slice(0, 500) : null,
+      isRage: c.isRage === true,
+      isDead: c.isDead === true,
     }));
 
     await prisma.trackingClick.createMany({ data });

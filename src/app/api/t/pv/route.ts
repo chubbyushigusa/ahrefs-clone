@@ -16,7 +16,7 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { sk, sid, url, path, title, ref, sw, sh } = body;
+    const { sk, sid, url, path, title, ref, sw, sh, us, um, uc } = body;
     if (!sk || !sid || !url) {
       return NextResponse.json({ error: "missing fields" }, { status: 400, headers: CORS });
     }
@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
         userAgent: req.headers.get("user-agent")?.slice(0, 500) || null,
         screenW: typeof sw === "number" ? sw : null,
         screenH: typeof sh === "number" ? sh : null,
+        utmSource: us ? String(us).slice(0, 200) : null,
+        utmMedium: um ? String(um).slice(0, 200) : null,
+        utmCampaign: uc ? String(uc).slice(0, 200) : null,
       },
     });
 
