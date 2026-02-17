@@ -83,7 +83,7 @@ export default function AuditPage() {
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), maxPages: 10 }),
+        body: JSON.stringify({ url: url.trim(), maxPages: 50 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -138,7 +138,7 @@ export default function AuditPage() {
             <div className="flex flex-col items-center">
               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
               <p className="text-lg font-medium">サイトをクロール中...</p>
-              <p className="text-sm text-muted-foreground mt-1">最大10ページをクロールします</p>
+              <p className="text-sm text-muted-foreground mt-1">最大50ページをクロールします</p>
               <div className="w-64 mt-4">
                 <Progress value={33} className="h-2" />
               </div>

@@ -78,7 +78,7 @@ export function RealClickHeatmap({ data, domain, path, pageHtml }: Props) {
           {data.clickMap.map((click, i) => {
             const intensity = click.count / maxCount;
             const relX = (click.x / 1400) * 100;
-            const relY = click.y / pageH * iframeHeight;
+            const relY = pageH > 0 ? (click.y / pageH) * iframeHeight : 0;
             const size = 30 + intensity * 50;
             const alpha = 0.25 + intensity * 0.55;
             return (

@@ -216,7 +216,7 @@ export function RealtimeDashboard({ siteId }: Props) {
           <CardTitle className="text-sm" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Globe style={{ width: "14px", height: "14px", color: "#3b82f6" }} />
             閲覧中のページ
-            {data && data.topPages.length > 0 && (
+            {data && data.topPages && data.topPages.length > 0 && (
               <Badge variant="secondary" style={{ fontSize: "10px" }}>
                 {data.topPages.length}ページ
               </Badge>
@@ -224,7 +224,7 @@ export function RealtimeDashboard({ siteId }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-0">
-          {!data || data.topPages.length === 0 ? (
+          {!data || !data.topPages || data.topPages.length === 0 ? (
             <p style={{ fontSize: "12px", color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>
               現在アクティブなページはありません
             </p>

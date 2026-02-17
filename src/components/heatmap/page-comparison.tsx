@@ -24,11 +24,19 @@ interface ComparisonMetric {
   higherIsBetter: boolean;
 }
 
+interface PeriodStats {
+  totalPV: number;
+  uniqueSessions: number;
+  avgDwell: number;
+  medianDwell: number;
+  fvExitRate: number;
+  bottomReachRate: number;
+}
+
 interface ComparisonData {
-  metrics: ComparisonMetric[];
-  periodA: { start: string; end: string };
-  periodB: { start: string; end: string };
-  path: string;
+  periodA: PeriodStats;
+  periodB: PeriodStats;
+  changes: Record<string, number>;
 }
 
 interface Props {
@@ -95,10 +103,10 @@ export function PageComparison({ siteId, pages }: Props) {
       const params = new URLSearchParams({
         siteId,
         path: selectedPath,
-        periodAStart,
-        periodAEnd,
-        periodBStart,
-        periodBEnd,
+        startA: periodAStart,
+        endA: periodAEnd,
+        startB: periodBStart,
+        endB: periodBEnd,
       });
       const res = await fetch(`/api/heatmap/compare?${params}`);
       const json = await res.json();
@@ -118,13 +126,20 @@ export function PageComparison({ siteId, pages }: Props) {
     fetchComparison();
   }, [fetchComparison]);
 
-  // Fallback metrics if API doesn't return data yet
-  const metrics: ComparisonMetric[] = data?.metrics || [
-    { label: "ページビュー", key: "pv", periodA: 0, periodB: 0, unit: "PV", higherIsBetter: true },
-    { label: "平均滞在時間", key: "avgDwell", periodA: 0, periodB: 0, unit: "秒", higherIsBetter: true },
-    { label: "FV離脱率", key: "fvExitRate", periodA: 0, periodB: 0, unit: "%", higherIsBetter: false },
-    { label: "最下部到達率", key: "bottomReach", periodA: 0, periodB: 0, unit: "%", higherIsBetter: true },
-  ];
+  // Build metrics from API response { periodA, periodB, changes }
+  const metrics: ComparisonMetric[] = data?.periodA
+    ? [
+        { label: "ページビュー", key: "pv", periodA: data.periodA.totalPV, periodB: data.periodB.totalPV, unit: "PV", higherIsBetter: true },
+        { label: "平均滞在時間", key: "avgDwell", periodA: Math.round(data.periodA.avgDwell / 1000), periodB: Math.round(data.periodB.avgDwell / 1000), unit: "秒", higherIsBetter: true },
+        { label: "FV離脱率", key: "fvExitRate", periodA: data.periodA.fvExitRate, periodB: data.periodB.fvExitRate, unit: "%", higherIsBetter: false },
+        { label: "最下部到達率", key: "bottomReach", periodA: data.periodA.bottomReachRate, periodB: data.periodB.bottomReachRate, unit: "%", higherIsBetter: true },
+      ]
+    : [
+        { label: "ページビュー", key: "pv", periodA: 0, periodB: 0, unit: "PV", higherIsBetter: true },
+        { label: "平均滞在時間", key: "avgDwell", periodA: 0, periodB: 0, unit: "秒", higherIsBetter: true },
+        { label: "FV離脱率", key: "fvExitRate", periodA: 0, periodB: 0, unit: "%", higherIsBetter: false },
+        { label: "最下部到達率", key: "bottomReach", periodA: 0, periodB: 0, unit: "%", higherIsBetter: true },
+      ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

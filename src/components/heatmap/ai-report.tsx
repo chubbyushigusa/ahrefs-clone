@@ -255,7 +255,7 @@ export function AiReport({ siteId }: Props) {
       </div>
 
       {/* Insight cards */}
-      {data.insights.length > 0 && (
+      {data.insights && data.insights.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {data.insights.map((insight, i) => {
             const styles = getSeverityStyles(insight.severity);
