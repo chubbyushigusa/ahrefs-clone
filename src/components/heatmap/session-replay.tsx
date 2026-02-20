@@ -35,7 +35,7 @@ interface SessionListItem {
 }
 
 interface SessionEvent {
-  type: "pageview" | "scroll" | "click";
+  type: "pageview" | "scroll" | "click" | "mousemove";
   timestamp: string;
   path?: string;
   title?: string;
@@ -43,6 +43,7 @@ interface SessionEvent {
   dwellMs?: number;
   x?: number;
   y?: number;
+  scrollY?: number;
   selector?: string;
   text?: string;
   href?: string;
@@ -204,37 +205,45 @@ export function SessionReplay({ siteId }: Props) {
   );
 
   // ── Compute mouse positions from events ─────────────────
-  const mousePositions = sessionDetail
-    ? sessionDetail.events
-        .filter(
-          (ev) =>
-            ev.type === "click" &&
-            ev.x !== undefined &&
-            ev.y !== undefined
-        )
-        .map((ev) => ({
-          x: ev.x!,
-          y: ev.y!,
-          timestamp: new Date(ev.timestamp).getTime(),
-          isClick: true,
-          path: ev.path,
-        }))
-    : [];
-
-  // Interpolate positions between clicks for smoother movement
   const interpolatedPositions = (() => {
-    if (mousePositions.length === 0) return [];
+    if (!sessionDetail) return [];
+
+    // Use both mousemove and click events for cursor position
+    const positions = sessionDetail.events
+      .filter(
+        (ev) =>
+          (ev.type === "click" || ev.type === "mousemove") &&
+          ev.x !== undefined &&
+          ev.y !== undefined
+      )
+      .map((ev) => ({
+        x: ev.x!,
+        y: ev.y!,
+        scrollY: ev.scrollY ?? 0,
+        timestamp: new Date(ev.timestamp).getTime(),
+        isClick: ev.type === "click",
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (positions.length === 0) return positions;
+
+    // If we have real mouse moves, use them directly (already smooth)
+    const hasMouseMoves = sessionDetail.events.some((ev) => ev.type === "mousemove");
+    if (hasMouseMoves) return positions;
+
+    // Fallback: interpolate between clicks only (old behavior)
     const result: {
       x: number;
       y: number;
+      scrollY: number;
       timestamp: number;
       isClick: boolean;
     }[] = [];
 
-    for (let i = 0; i < mousePositions.length; i++) {
-      const current = mousePositions[i];
+    for (let i = 0; i < positions.length; i++) {
+      const current = positions[i];
       if (i > 0) {
-        const prev = mousePositions[i - 1];
+        const prev = positions[i - 1];
         const timeDiff = current.timestamp - prev.timestamp;
         const steps = Math.min(Math.max(Math.floor(timeDiff / 100), 1), 20);
         for (let s = 1; s < steps; s++) {
@@ -242,6 +251,7 @@ export function SessionReplay({ siteId }: Props) {
           result.push({
             x: prev.x + (current.x - prev.x) * t,
             y: prev.y + (current.y - prev.y) * t,
+            scrollY: prev.scrollY + (current.scrollY - prev.scrollY) * t,
             timestamp: prev.timestamp + timeDiff * t,
             isClick: false,
           });
@@ -250,8 +260,9 @@ export function SessionReplay({ siteId }: Props) {
       result.push({
         x: current.x,
         y: current.y,
+        scrollY: current.scrollY,
         timestamp: current.timestamp,
-        isClick: true,
+        isClick: current.isClick,
       });
     }
     return result;
@@ -272,6 +283,15 @@ export function SessionReplay({ siteId }: Props) {
 
     const currentPos = interpolatedPositions[currentEventIndex];
     setCursorPos({ x: currentPos.x, y: currentPos.y });
+
+    // Scroll the iframe to match the user's scroll position
+    if (iframeRef.current?.contentWindow && currentPos.scrollY !== undefined) {
+      try {
+        iframeRef.current.contentWindow.scrollTo(0, currentPos.scrollY);
+      } catch {
+        // cross-origin iframe, ignore
+      }
+    }
 
     // Show click indicator if it is a click event
     if (currentPos.isClick) {
@@ -611,13 +631,13 @@ export function SessionReplay({ siteId }: Props) {
                 zIndex: 10,
               }}
             >
-              {/* Cursor */}
+              {/* Cursor - convert page coordinates to viewport-relative position */}
               {interpolatedPositions.length > 0 && (
                 <div
                   style={{
                     position: "absolute",
                     left: `${(cursorPos.x / (selectedSession.screenW || 1920)) * 100}%`,
-                    top: `${(cursorPos.y / (selectedSession.screenH || 1080)) * 100}%`,
+                    top: `${((cursorPos.y - (interpolatedPositions[currentEventIndex]?.scrollY ?? 0)) / (selectedSession.screenH || 1080)) * 100}%`,
                     transform: "translate(-2px, -2px)",
                     transition: "left 0.08s linear, top 0.08s linear",
                     zIndex: 20,
@@ -641,7 +661,7 @@ export function SessionReplay({ siteId }: Props) {
                   style={{
                     position: "absolute",
                     left: `${(ci.x / (selectedSession.screenW || 1920)) * 100}%`,
-                    top: `${(ci.y / (selectedSession.screenH || 1080)) * 100}%`,
+                    top: `${((ci.y - (interpolatedPositions[currentEventIndex]?.scrollY ?? 0)) / (selectedSession.screenH || 1080)) * 100}%`,
                     width: "24px",
                     height: "24px",
                     borderRadius: "50%",
@@ -807,6 +827,20 @@ export function SessionReplay({ siteId }: Props) {
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
                     スクロール:{" "}
                     {sessionDetail.events.filter((e) => e.type === "scroll").length}
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      backgroundColor: "#8b5cf6",
+                    }}
+                  />
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>
+                    マウス移動:{" "}
+                    {sessionDetail.events.filter((e) => e.type === "mousemove").length}
                   </span>
                 </div>
               </div>

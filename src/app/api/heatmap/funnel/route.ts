@@ -9,6 +9,15 @@ interface FunnelStep {
   label: string;
 }
 
+/** Normalize a URL path by stripping query params, hash, and trailing slash */
+function normalizePath(p: string): string {
+  let normalized = p.split("?")[0].split("#")[0];
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized || "/";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -80,13 +89,16 @@ export async function GET(req: NextRequest) {
     // For each session, check if they completed each funnel step in order
     const stepSessionCounts: number[] = new Array(steps.length).fill(0);
 
+    // Pre-normalize funnel step paths
+    const normalizedStepPaths = steps.map((s) => normalizePath(s.path));
+
     for (const [, pvs] of sessionPageviews.entries()) {
       let stepIndex = 0;
 
       for (const pv of pvs) {
         if (stepIndex >= steps.length) break;
 
-        if (pv.path === steps[stepIndex].path) {
+        if (normalizePath(pv.path) === normalizedStepPaths[stepIndex]) {
           stepSessionCounts[stepIndex]++;
           stepIndex++;
         }

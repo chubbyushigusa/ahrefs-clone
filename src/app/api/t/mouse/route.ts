@@ -17,6 +17,7 @@ interface MovePayload {
   t: number;
   x: number;
   y: number;
+  sy?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
       t: typeof m.t === "number" ? m.t : 0,
       x: typeof m.x === "number" ? m.x : 0,
       y: typeof m.y === "number" ? m.y : 0,
+      ...(typeof m.sy === "number" ? { sy: m.sy } : {}),
     }));
 
     await prisma.trackingMouseMove.create({

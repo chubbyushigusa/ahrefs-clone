@@ -65,8 +65,8 @@
       path: location.pathname,
       title: document.title,
       ref: document.referrer,
-      sw: screen.width,
-      sh: screen.height,
+      sw: window.innerWidth,
+      sh: window.innerHeight,
       us: utm.us,
       um: utm.um,
       uc: utm.uc,
@@ -130,10 +130,12 @@
     if (now - lastMouseTime < 100) return;
     lastMouseTime = now;
     if (mouseBuf.length >= 500) return; // cap at 500 moves
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
     mouseBuf.push({
       t: now - mouseStartTime,
-      x: e.clientX,
-      y: e.clientY,
+      x: Math.round(e.pageX),
+      y: Math.round(e.pageY),
+      sy: Math.round(scrollY),
     });
   }
 
@@ -160,11 +162,8 @@
   function onClick(e) {
     if (!pvId) return;
     var t = e.target;
-    var rect = t.getBoundingClientRect();
-    var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
-    var scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0;
-    var x = Math.round(rect.left + rect.width / 2 + scrollX);
-    var y = Math.round(rect.top + rect.height / 2 + scrollY);
+    var x = Math.round(e.pageX);
+    var y = Math.round(e.pageY);
 
     var sel = t.tagName.toLowerCase();
     if (t.id) sel += "#" + t.id;
@@ -174,7 +173,7 @@
     var text = (t.textContent || "").trim().slice(0, 50);
     var href = t.closest("a") ? t.closest("a").href : null;
 
-    // Rage click detection: 3+ clicks on same selector within 1.5s
+    // Rage click detection: 3+ clicks on same selector within 2s
     var now = Date.now();
     clickHistory.push({ sel: sel, time: now });
     // Keep only last 2 seconds of history

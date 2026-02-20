@@ -25,7 +25,7 @@ export interface SessionListResponse {
 // ─── Session Detail ───────────────────────────────────────
 
 export interface SessionTimelineEvent {
-  type: "pageview" | "scroll" | "click";
+  type: "pageview" | "scroll" | "click" | "mousemove";
   timestamp: string;
   // pageview
   path?: string;
@@ -33,9 +33,10 @@ export interface SessionTimelineEvent {
   // scroll
   maxDepth?: number;
   dwellMs?: number;
-  // click
+  // click / mousemove
   x?: number;
   y?: number;
+  scrollY?: number;
   selector?: string;
   text?: string;
   href?: string;

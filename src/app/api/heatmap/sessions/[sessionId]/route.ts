@@ -31,7 +31,7 @@ export async function GET(
 
     const pageviews = await prisma.trackingPageview.findMany({
       where: { siteId, sessionId },
-      include: { scrolls: true, clicks: true },
+      include: { scrolls: true, clicks: true, mouseMoves: true },
       orderBy: { createdAt: "asc" },
     });
 
@@ -74,6 +74,25 @@ export async function GET(
           href: cl.href || undefined,
           path: pv.path,
         });
+      }
+
+      for (const mm of pv.mouseMoves) {
+        try {
+          const moves = JSON.parse(mm.moves as string) as { t: number; x: number; y: number; sy?: number }[];
+          const pvStart = pv.createdAt.getTime();
+          for (const move of moves) {
+            events.push({
+              type: "mousemove",
+              timestamp: new Date(pvStart + move.t).toISOString(),
+              x: move.x,
+              y: move.y,
+              scrollY: move.sy,
+              path: pv.path,
+            });
+          }
+        } catch {
+          // skip malformed mouse move data
+        }
       }
     }
 

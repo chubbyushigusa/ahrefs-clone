@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         await prisma.trackingScroll.update({
           where: { id: existing.id },
           data: {
-            maxDepth: Math.max(d, existing.maxDepth),
+            maxDepth: Math.min(Math.max(d, existing.maxDepth), 100),
             dwellMs: Math.max(dw || 0, existing.dwellMs),
             ...(mergedZones ? { zones: mergedZones } : {}),
           },
